@@ -1,6 +1,6 @@
 # main 브랜치에 push하면 FTP 서버로 홈페이지를 자동 업로드합니다.
 # 필요한 저장소 Secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD
-# (선택) FTP_SERVER_DIR: 서버의 홈페이지 폴더. 없으면 자동으로 찾습니다.
+# (선택) FTP_SERVER_DIR: 서버의 홈페이지 폴더. 없으면 www/ (카페24 기본)
 name: FTP 배포
 
 on:
@@ -18,26 +18,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: 서버 홈페이지 폴더 찾기
-        id: dir
+      - name: FTP 접속 정보 확인
+        id: ftp
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
-          VAR_SERVER: ${{ vars.FTP_SERVER }}
-          VAR_USERNAME: ${{ vars.FTP_USERNAME }}
-          VAR_PASSWORD: ${{ vars.FTP_PASSWORD }}
         run: |
           missing=""
           for n in FTP_SERVER FTP_USERNAME FTP_PASSWORD; do
             [ -z "${!n}" ] && missing="$missing $n"
           done
           if [ -n "$missing" ]; then
-            # 값은 출력하지 않고, Variables 탭에 잘못 등록됐는지만 확인
-            if [ -n "$VAR_SERVER$VAR_USERNAME$VAR_PASSWORD" ]; then
-              echo "::error::FTP 정보가 Secrets가 아니라 Variables 탭에 등록되어 있습니다. Secrets 탭으로 옮기세요."
-            fi
             echo "::error::등록되지 않았거나 비어 있는 Secrets:$missing"
             exit 1
           fi
@@ -47,50 +40,26 @@ jobs:
           FTP_USERNAME=$(trim "$FTP_USERNAME")
           FTP_PASSWORD=$(trim "$FTP_PASSWORD")
           echo "::add-mask::$FTP_PASSWORD"
-          echo "server=$FTP_SERVER" >> "$GITHUB_OUTPUT"
-          echo "username=$FTP_USERNAME" >> "$GITHUB_OUTPUT"
-          echo "password=$FTP_PASSWORD" >> "$GITHUB_OUTPUT"
-          if [ -n "$FTP_SERVER_DIR" ]; then
-            dir="${FTP_SERVER_DIR%/}/"
-            echo "지정된 폴더 사용: $dir"
-          else
-            list() { curl -sS --user "$FTP_USERNAME:$FTP_PASSWORD" --list-only "ftp://$FTP_SERVER/$1" 2>/dev/null | tr -d '\r'; }
-            dir=""
-            for d in public_html www html htdocs web; do
-              if list "$d/" | grep -qx 'index.html'; then dir="$d/"; break; fi
-            done
-            if [ -z "$dir" ] && list "" | grep -qx 'index.html'; then dir="./"; fi
-            if [ -z "$dir" ]; then
-              root=$(curl -sS --user "$FTP_USERNAME:$FTP_PASSWORD" --list-only "ftp://$FTP_SERVER/" 2>&1 | tr -d '\r' | tr '\n' ' ')
-              echo "::error::접속 주소: $FTP_SERVER / 아이디: $FTP_USERNAME"
-              echo "::error::FTP 첫 화면 목록: $root"
-              # 접속 결과 코드만 표시 (6: 주소 오류, 7: 접속 불가, 28: 시간 초과, 67: 아이디/비밀번호 오류)
-              for mode in "" "--ftp-pasv" "--ftp-port -"; do
-                curl -s --max-time 30 --user "$FTP_USERNAME:$FTP_PASSWORD" $mode "ftp://$FTP_SERVER/" -o /dev/null
-                echo "::error::접속 결과 코드 [${mode:-기본}]: $?"
-              done
-              for d in public_html www html htdocs web; do
-                sub=$(list "$d/" | tr '\n' ' ')
-                [ -n "$sub" ] && echo "::error::$d 폴더 목록: $sub"
-              done
-              echo "::error::index.html이 있는 홈페이지 폴더를 찾지 못했습니다. 위 목록을 보고 FTP_SERVER_DIR Secret에 폴더 이름을 등록하세요."
-              exit 1
-            fi
-            echo "자동으로 찾은 폴더: $dir"
-          fi
-          echo "path=$dir" >> "$GITHUB_OUTPUT"
+          dir=$(trim "${FTP_SERVER_DIR:-www}")
+          dir="${dir#/}"
+          dir="${dir%/}/"
+          echo "업로드 폴더: $dir"
+          {
+            echo "server=$FTP_SERVER"
+            echo "username=$FTP_USERNAME"
+            echo "password=$FTP_PASSWORD"
+            echo "dir=$dir"
+          } >> "$GITHUB_OUTPUT"
 
       - name: FTP 업로드
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ steps.dir.outputs.server }}
-          username: ${{ steps.dir.outputs.username }}
-          password: ${{ steps.dir.outputs.password }}
-          server-dir: ${{ steps.dir.outputs.path }}
-          # 서버의 관리자 계정·문의 내역(data)과 업로드 파일(uploads)은 건드리지 않음
+          server: ${{ steps.ftp.outputs.server }}
+          username: ${{ steps.ftp.outputs.username }}
+          password: ${{ steps.ftp.outputs.password }}
+          server-dir: ${{ steps.ftp.outputs.dir }}
+          # data/, uploads/는 저장소에 .htaccess만 있으므로 서버의 실제 데이터는 건드리지 않음
           exclude: |
             **/.git*
             **/.git*/**
             .github/**
-            data/**
-            uploads/**
