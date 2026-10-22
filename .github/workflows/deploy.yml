@@ -1,0 +1,66 @@
+# main 브랜치에 push하면 FTP 서버로 홈페이지를 자동 업로드합니다.
+# 필요한 저장소 Secrets: FTP_SERVER, FTP_USERNAME, FTP_PASSWORD
+# (선택) FTP_SERVER_DIR: 서버의 홈페이지 폴더. 없으면 자동으로 찾습니다.
+name: FTP 배포
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ftp-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 서버 홈페이지 폴더 찾기
+        id: dir
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+        run: |
+          if [ -z "$FTP_SERVER" ] || [ -z "$FTP_USERNAME" ] || [ -z "$FTP_PASSWORD" ]; then
+            echo "::error::FTP_SERVER / FTP_USERNAME / FTP_PASSWORD Secrets를 먼저 등록하세요."
+            exit 1
+          fi
+          if [ -n "$FTP_SERVER_DIR" ]; then
+            dir="${FTP_SERVER_DIR%/}/"
+            echo "지정된 폴더 사용: $dir"
+          else
+            list() { curl -sS --user "$FTP_USERNAME:$FTP_PASSWORD" --list-only "ftp://$FTP_SERVER/$1" 2>/dev/null | tr -d '\r'; }
+            dir=""
+            for d in public_html www html htdocs web; do
+              if list "$d/" | grep -qx 'index.html'; then dir="$d/"; break; fi
+            done
+            if [ -z "$dir" ] && list "" | grep -qx 'index.html'; then dir="./"; fi
+            if [ -z "$dir" ]; then
+              echo "FTP 접속 후 첫 화면의 폴더/파일 목록:"
+              list ""
+              echo "::error::index.html이 있는 홈페이지 폴더를 찾지 못했습니다. 위 목록을 보고 FTP_SERVER_DIR Secret에 폴더 이름을 등록하세요."
+              exit 1
+            fi
+            echo "자동으로 찾은 폴더: $dir"
+          fi
+          echo "path=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: FTP 업로드
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          server-dir: ${{ steps.dir.outputs.path }}
+          # 서버의 관리자 계정·문의 내역(data)과 업로드 파일(uploads)은 건드리지 않음
+          exclude: |
+            **/.git*
+            **/.git*/**
+            .github/**
+            data/**
+            uploads/**
