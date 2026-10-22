@@ -52,8 +52,12 @@ jobs:
             done
             if [ -z "$dir" ] && list "" | grep -qx 'index.html'; then dir="./"; fi
             if [ -z "$dir" ]; then
-              echo "FTP 접속 후 첫 화면의 폴더/파일 목록:"
-              list ""
+              root=$(curl -sS --user "$FTP_USERNAME:$FTP_PASSWORD" --list-only "ftp://$FTP_SERVER/" 2>&1 | tr -d '\r' | tr '\n' ' ')
+              echo "::error::FTP 첫 화면 목록: $root"
+              for d in public_html www html htdocs web; do
+                sub=$(list "$d/" | tr '\n' ' ')
+                [ -n "$sub" ] && echo "::error::$d 폴더 목록: $sub"
+              done
               echo "::error::index.html이 있는 홈페이지 폴더를 찾지 못했습니다. 위 목록을 보고 FTP_SERVER_DIR Secret에 폴더 이름을 등록하세요."
               exit 1
             fi
