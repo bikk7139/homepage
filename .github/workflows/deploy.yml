@@ -64,6 +64,11 @@ jobs:
               root=$(curl -sS --user "$FTP_USERNAME:$FTP_PASSWORD" --list-only "ftp://$FTP_SERVER/" 2>&1 | tr -d '\r' | tr '\n' ' ')
               echo "::error::접속 주소: $FTP_SERVER / 아이디: $FTP_USERNAME"
               echo "::error::FTP 첫 화면 목록: $root"
+              # 접속 결과 코드만 표시 (6: 주소 오류, 7: 접속 불가, 28: 시간 초과, 67: 아이디/비밀번호 오류)
+              for mode in "" "--ftp-pasv" "--ftp-port -"; do
+                curl -s --max-time 30 --user "$FTP_USERNAME:$FTP_PASSWORD" $mode "ftp://$FTP_SERVER/" -o /dev/null
+                echo "::error::접속 결과 코드 [${mode:-기본}]: $?"
+              done
               for d in public_html www html htdocs web; do
                 sub=$(list "$d/" | tr '\n' ' ')
                 [ -n "$sub" ] && echo "::error::$d 폴더 목록: $sub"
