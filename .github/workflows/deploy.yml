@@ -25,12 +25,19 @@ jobs:
           FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
+          VAR_SERVER: ${{ vars.FTP_SERVER }}
+          VAR_USERNAME: ${{ vars.FTP_USERNAME }}
+          VAR_PASSWORD: ${{ vars.FTP_PASSWORD }}
         run: |
           missing=""
           for n in FTP_SERVER FTP_USERNAME FTP_PASSWORD; do
             [ -z "${!n}" ] && missing="$missing $n"
           done
           if [ -n "$missing" ]; then
+            # 값은 출력하지 않고, Variables 탭에 잘못 등록됐는지만 확인
+            if [ -n "$VAR_SERVER$VAR_USERNAME$VAR_PASSWORD" ]; then
+              echo "::error::FTP 정보가 Secrets가 아니라 Variables 탭에 등록되어 있습니다. Secrets 탭으로 옮기세요."
+            fi
             echo "::error::등록되지 않았거나 비어 있는 Secrets:$missing"
             exit 1
           fi
