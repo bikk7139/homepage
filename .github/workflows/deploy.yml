@@ -41,6 +41,15 @@ jobs:
             echo "::error::등록되지 않았거나 비어 있는 Secrets:$missing"
             exit 1
           fi
+          # 앞뒤 공백·줄바꿈, ftp:// 접두어, 뒤쪽 경로 등 잘못 붙은 문자 정리
+          trim() { printf '%s' "$1" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' | head -n 1; }
+          FTP_SERVER=$(trim "$FTP_SERVER" | sed -E 's#^[a-zA-Z]+://##; s#[/[:space:]].*$##')
+          FTP_USERNAME=$(trim "$FTP_USERNAME")
+          FTP_PASSWORD=$(trim "$FTP_PASSWORD")
+          echo "::add-mask::$FTP_PASSWORD"
+          echo "server=$FTP_SERVER" >> "$GITHUB_OUTPUT"
+          echo "username=$FTP_USERNAME" >> "$GITHUB_OUTPUT"
+          echo "password=$FTP_PASSWORD" >> "$GITHUB_OUTPUT"
           if [ -n "$FTP_SERVER_DIR" ]; then
             dir="${FTP_SERVER_DIR%/}/"
             echo "지정된 폴더 사용: $dir"
@@ -53,6 +62,7 @@ jobs:
             if [ -z "$dir" ] && list "" | grep -qx 'index.html'; then dir="./"; fi
             if [ -z "$dir" ]; then
               root=$(curl -sS --user "$FTP_USERNAME:$FTP_PASSWORD" --list-only "ftp://$FTP_SERVER/" 2>&1 | tr -d '\r' | tr '\n' ' ')
+              echo "::error::접속 주소: $FTP_SERVER / 아이디: $FTP_USERNAME"
               echo "::error::FTP 첫 화면 목록: $root"
               for d in public_html www html htdocs web; do
                 sub=$(list "$d/" | tr '\n' ' ')
@@ -68,9 +78,9 @@ jobs:
       - name: FTP 업로드
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          server: ${{ secrets.FTP_SERVER }}
-          username: ${{ secrets.FTP_USERNAME }}
-          password: ${{ secrets.FTP_PASSWORD }}
+          server: ${{ steps.dir.outputs.server }}
+          username: ${{ steps.dir.outputs.username }}
+          password: ${{ steps.dir.outputs.password }}
           server-dir: ${{ steps.dir.outputs.path }}
           # 서버의 관리자 계정·문의 내역(data)과 업로드 파일(uploads)은 건드리지 않음
           exclude: |
