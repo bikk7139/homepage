@@ -26,8 +26,12 @@ jobs:
           FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
           FTP_SERVER_DIR: ${{ secrets.FTP_SERVER_DIR }}
         run: |
-          if [ -z "$FTP_SERVER" ] || [ -z "$FTP_USERNAME" ] || [ -z "$FTP_PASSWORD" ]; then
-            echo "::error::FTP_SERVER / FTP_USERNAME / FTP_PASSWORD Secrets를 먼저 등록하세요."
+          missing=""
+          for n in FTP_SERVER FTP_USERNAME FTP_PASSWORD; do
+            [ -z "${!n}" ] && missing="$missing $n"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::등록되지 않았거나 비어 있는 Secrets:$missing"
             exit 1
           fi
           if [ -n "$FTP_SERVER_DIR" ]; then
