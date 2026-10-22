@@ -51,20 +51,6 @@ jobs:
             echo "dir=$dir"
           } >> "$GITHUB_OUTPUT"
 
-      - name: 쓰기 위치 점검 (임시)
-        env:
-          S: ${{ steps.ftp.outputs.server }}
-          U: ${{ steps.ftp.outputs.username }}
-          P: ${{ steps.ftp.outputs.password }}
-        run: |
-          echo test > t.txt
-          for p in "" "www/" "public_html/" "html/"; do
-            curl -s --max-time 30 --user "$U:$P" --ftp-create-dirs -T t.txt "ftp://$S/${p}zz_test/t.txt" && c=0 || c=$?
-            echo "::warning::[/${p}] 폴더 생성+파일 쓰기 결과: $c"
-            [ $c -eq 0 ] && curl -s --max-time 30 --user "$U:$P" "ftp://$S/" -Q "DELE ${p}zz_test/t.txt" -Q "RMD ${p}zz_test" -o /dev/null || true
-          done
-          echo "::warning::PWD 목록(LIST): $(curl -s --max-time 30 --user "$U:$P" "ftp://$S/" | tr -d '\r' | awk '{print $1, $NF}' | tr '\n' '|')"
-
       - name: FTP 업로드
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
